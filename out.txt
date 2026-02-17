@@ -1,0 +1,3 @@
+RUN: one-verify-tool/main.py
+❌ Error: httpx required. Install: pip install httpx
+FINAL_FAILED
