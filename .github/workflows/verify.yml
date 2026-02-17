@@ -4,46 +4,30 @@ on:
   workflow_dispatch:
     inputs:
       url:
+        description: "Verification URL"
         required: true
-        type: string
-      uid:
-        required: true
-        type: string
-
-permissions:
-  contents: write
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Reset result to WAIT
-        run: |
-          FILE="result_${{ github.event.inputs.uid }}.txt"
-          echo "WAIT" > "$FILE"
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+    - name: Install deps
+      run: pip install -r requirements.txt
 
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+    - name: Run runner
+      run: |
+        echo "URL: ${{ github.event.inputs.url }}"
+        python runner.py "${{ github.event.inputs.url }}"
 
-      - name: Run runner
-        run: |
-          python runner.py "${{ github.event.inputs.url }}" "${{ github.event.inputs.uid }}"
-
-      - name: Commit & push result
-        run: |
-          FILE="result_${{ github.event.inputs.uid }}.txt"
-          git config user.name "bot"
-          git config user.email "bot@bot.com"
-          git add "$FILE"
-          git commit -m "result $FILE" || true
-          git push
+    - name: Save result
+      run: |
+        echo "done" > result.txt
