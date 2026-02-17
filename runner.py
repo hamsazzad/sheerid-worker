@@ -1,75 +1,123 @@
 import sys, subprocess, re, os
 
-# args
-url = sys.argv[1].strip()
-uid = sys.argv[2].strip()
+url = sys.argv[1].strip().lower()
 
-url_l = url.lower()
+BASE = os.getcwd()
 
-RESULT_FILE = f"result_{uid}.txt"
+# -------- find correct base folder ----------
+def find_tool(path):
+    if os.path.exists(path):
+        return path
 
-def write_result(val: str):
-    with open(RESULT_FILE, "w", encoding="utf-8") as f:
-        f.write(val.strip().upper())
+    alt = os.path.join("SheerID-Verification-Tool-master", path)
+    if os.path.exists(alt):
+        return alt
 
-def pick_tool():
-    # NOTE: এগুলো তোমার zip-এ যে folder/path আছে সেভাবে মিলিয়ে দাও।
-    # যদি folder name আলাদা হয়, শুধু এই return path গুলো ঠিক করলেই হবে।
-    if "spotify" in url_l:
-        return "SheerID-Verification-Tool-master/spotify-verify-tool/main.py"
-    if "k12" in url_l:
-        return "SheerID-Verification-Tool-master/k12-verify-tool/main.py"
-    if "veteran" in url_l or "military" in url_l:
-        return "SheerID-Verification-Tool-master/veterans-verify-tool/main.py"
-    if "teacher" in url_l:
-        return "SheerID-Verification-Tool-master/canva-teacher-tool/main.py"
-    return "SheerID-Verification-Tool-master/one-verify-tool/main.py"
+    return None
 
-def run_cmd(cmd):
-    # returns combined stdout
-    try:
-        p = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
-        out = ""
-        for line in p.stdout:
-            print(line.rstrip(), flush=True)  # debug log in Actions
-            out += line.lower()
-        return out
-    except Exception as e:
-        print("ERROR:", e, flush=True)
-        return ""
+# -------- choose tool ----------
+def pick():
+    if "spotify" in url:
+        return find_tool("spotify-verify-tool/main.py")
 
-# 1) init
-print("RUNNER_START", flush=True)
-write_result("WAIT")
+    if "k12" in url:
+        return find_tool("k12-verify-tool/main.py")
 
-# 2) run selected tool
-tool = pick_tool()
-print("TOOL =", tool, flush=True)
+    if "veteran" in url:
+        return find_tool("veterans-verify-tool/main.py")
 
-# Most scripts accept: python main.py <url>
-output = run_cmd(["python", tool, url])
+    if "teacher" in url or "canva" in url:
+        return find_tool("canva-teacher-tool/main.py")
 
-# 3) classify
-# SUCCESS keywords
-if re.search(r"\b(success|verified|approved|eligible|congratulations)\b", output):
-    write_result("SUCCESS")
-    print("FINAL:SUCCESS", flush=True)
+    if "perplexity" in url:
+        return find_tool("perplexity-verify-tool/main.py")
 
-# PENDING keywords
-elif re.search(r"\b(pending|upload|document|documents|review|additional)\b", output):
-    write_result("PENDING")
-    print("FINAL:PENDING", flush=True)
+    if "youtube" in url:
+        return find_tool("youtube-verify-tool/main.py")
 
-# FRAUD keywords
-elif re.search(r"\b(fraud|blocked|abuse|suspended|unusual|suspicious)\b", output):
-    write_result("FRAUD")
-    print("FINAL:FRAUD", flush=True)
+    return find_tool("one-verify-tool/main.py")
+
+tool = pick()
+
+if not tool:
+    print("TOOL_NOT_FOUND")
+    print("FINAL_FAILED")
+    sys.exit(0)
+
+print("RUNNING:", tool, flush=True)
+
+# -------- run tool ----------
+try:
+    proc = subprocess.Popen(
+        ["python", tool, url],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    )
+
+    output = ""
+    for line in proc.stdout:
+        line = line.strip()
+        print(line, flush=True)
+        output += line.lower() + "\n"
+
+except Exception as e:
+    print("ERROR:", str(e))
+    print("FINAL_FAILED")
+    sys.exit(0)
+
+# -------- SMART CLASSIFIER ----------
+
+def contains(words):
+    return any(w in output for w in words)
+
+# SUCCESS
+if contains([
+    "verified",
+    "you're eligible",
+    "you’re eligible",
+    "eligible for the offer",
+    "verification successful",
+    "approved",
+    "congratulations",
+    "student verified"
+]):
+    print("FINAL_SUCCESS")
+
+# PENDING
+elif contains([
+    "upload document",
+    "upload documents",
+    "manual review",
+    "pending verification",
+    "additional information required",
+    "verify your status",
+    "needs review"
+]):
+    print("FINAL_PENDING")
+
+# FRAUD
+elif contains([
+    "fraud",
+    "abuse",
+    "blocked",
+    "suspended",
+    "too many attempts",
+    "temporarily locked",
+    "security reasons"
+]):
+    print("FINAL_FRAUD")
+
+# FAILED
+elif contains([
+    "not eligible",
+    "cannot verify",
+    "unable to verify",
+    "we couldn't verify",
+    "doesn’t qualify",
+    "does not qualify"
+]):
+    print("FINAL_FAILED")
 
 else:
-    write_result("FAILED")
-    print("FINAL:FAILED", flush=True)
+    print("FINAL_FAILED")
