@@ -1,0 +1,205 @@
+import sqlite3, requests, time
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+
+# ---------------- CONFIG ----------------
+TOKEN = "8582140783:AAEeX5iL_2nQEFlMKYIxGoquNDvDfEs8LRI"
+CHANNEL = "@aamoviesofficial"
+ADMIN = 7151673318
+BOT_USERNAME = "shs_ai_assistant_bot"
+
+GITHUB_TOKEN = "PUT_GITHUB_TOKEN"
+REPO = "USERNAME/REPO"
+WORKFLOW = "verify.yml"
+
+# ---------------- DATABASE ----------------
+db = sqlite3.connect("users.db", check_same_thread=False)
+cur = db.cursor()
+cur.execute("""CREATE TABLE IF NOT EXISTS users(
+id INTEGER PRIMARY KEY,
+tokens INT DEFAULT 0,
+joined INT DEFAULT 0
+)""")
+db.commit()
+
+menu = ReplyKeyboardMarkup([["/balance","/help"]], resize_keyboard=True)
+
+def add(uid, amt):
+    cur.execute("UPDATE users SET tokens=tokens+? WHERE id=?", (amt, uid))
+    db.commit()
+
+def bal(uid):
+    cur.execute("SELECT tokens FROM users WHERE id=?", (uid,))
+    r = cur.fetchone()
+    return r[0] if r else 0
+
+# ---------------- JOIN CHECK ----------------
+async def joined(bot, uid):
+    try:
+        m = await bot.get_chat_member(CHANNEL, uid)
+        return m.status in ["member","administrator","creator"]
+    except:
+        return False
+
+# ---------------- START ----------------
+async def start(update:Update, context:ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    cur.execute("INSERT OR IGNORE INTO users(id,tokens) VALUES(?,10)", (uid,))
+    db.commit()
+
+    if not await joined(context.bot, uid):
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Join Channel", url=f"https://t.me/{CHANNEL.replace('@','')}")],
+            [InlineKeyboardButton("I'm Joined", callback_data="joined")]
+        ])
+        await update.message.reply_text("🚫 Join channel first", reply_markup=kb)
+        return
+
+    ref = context.args
+    if ref:
+        refid = int(ref[0])
+        if refid != uid:
+            add(refid,5)
+
+    await update.message.reply_text(
+f"""👋 Welcome
+
+💰 Balance: {bal(uid)} tokens
+
+🎁 Referral:
+https://t.me/{BOT_USERNAME}?start={uid}
+
+Verify cost = 50 tokens""",
+reply_markup=menu)
+
+# ---------------- JOIN BUTTON ----------------
+async def joinbtn(update:Update, context:ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    uid = q.from_user.id
+
+    if not await joined(context.bot, uid):
+        await q.answer("Join first!", show_alert=True)
+        return
+
+    cur.execute("SELECT joined FROM users WHERE id=?", (uid,))
+    if cur.fetchone()[0] == 0:
+        add(uid,20)
+        cur.execute("UPDATE users SET joined=1 WHERE id=?", (uid,))
+        db.commit()
+        await q.message.reply_text("✅ 20 tokens added")
+
+    await q.answer()
+
+# ---------------- BALANCE ----------------
+async def balance(update:Update, context:ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"💰 {bal(update.effective_user.id)} tokens")
+
+# ---------------- DOCS ----------------
+async def docs(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("""
+📄 Upload Documents Guide
+
+Student:
+• ID Card
+• Fee receipt
+• Portal screenshot
+
+Teacher:
+• Faculty ID / salary slip
+
+Military:
+• Military / Veteran ID
+
+Clear image or PDF only
+""")
+
+# ---------------- VERIFY ----------------
+async def verify(update:Update, context:ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if not context.args:
+        await update.message.reply_text("Usage:\n/verify https://service.sheerid.com/xxx")
+        return
+
+    link = context.args[0]
+
+    if "sheerid" not in link.lower():
+        await update.message.reply_text("Invalid link")
+        return
+
+    if bal(uid) < 50:
+        await update.message.reply_text("Not enough tokens")
+        return
+
+    add(uid,-50)
+    await update.message.reply_text("☁️ Starting verification...")
+
+    headers = {
+        "Authorization":f"Bearer {GITHUB_TOKEN}",
+        "Accept":"application/vnd.github+json"
+    }
+
+    requests.post(
+        f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches",
+        headers=headers,
+        json={"ref":"main","inputs":{"url":link}}
+    )
+
+    await update.message.reply_text("⏳ Waiting result...")
+
+    for _ in range(60):
+        r=requests.get(f"https://raw.githubusercontent.com/{REPO}/main/result.txt")
+        txt=r.text.strip()
+
+        if "RESULT:SUCCESS" in txt:
+            await update.message.reply_text("✅ Verification Successful\nGo to service.sheerid.com")
+            return
+        elif "RESULT:PENDING" in txt:
+            await update.message.reply_text("🟡 Pending Documents — use /docs")
+            return
+        elif "RESULT:FRAUD" in txt:
+            await update.message.reply_text("🚫 Fraud detected")
+            return
+        elif "RESULT:FAILED" in txt:
+            await update.message.reply_text("❌ Not eligible")
+            return
+
+        time.sleep(5)
+
+    await update.message.reply_text("Timeout ❌")
+
+# ---------------- ADMIN ----------------
+async def adminadd(update:Update, context:ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN:
+        return
+    uid = int(context.args[0])
+    amt = int(context.args[1])
+    add(uid, amt)
+    await update.message.reply_text("added")
+
+# ---------------- HELP ----------------
+async def help(update:Update, context:ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("""
+🤖 Commands
+
+/start — start bot
+/verify link — verify
+/balance — tokens
+/docs — document guide
+/help — help
+""")
+
+# ---------------- APP ----------------
+app = ApplicationBuilder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start",start))
+app.add_handler(CommandHandler("verify",verify))
+app.add_handler(CommandHandler("balance",balance))
+app.add_handler(CommandHandler("docs",docs))
+app.add_handler(CommandHandler("help",help))
+app.add_handler(CommandHandler("adminadd",adminadd))
+app.add_handler(CallbackQueryHandler(joinbtn,pattern="joined"))
+
+print("BOT RUNNING")
+app.run_polling()
