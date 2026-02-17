@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: "Verification URL"
+        required: true
+      uid:
         required: true
 
 jobs:
@@ -12,22 +13,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: "3.11"
 
     - name: Install deps
-      run: pip install -r requirements.txt
+      run: |
+        pip install requests beautifulsoup4 lxml
 
     - name: Run runner
       run: |
-        echo "URL: ${{ github.event.inputs.url }}"
-        python runner.py "${{ github.event.inputs.url }}"
+        python3 runner.py "${{ github.event.inputs.url }}" > out.txt 2>&1 || true
 
-    - name: Save result
+    - name: Detect result
       run: |
-        echo "done" > result.txt
+        if grep -q FINAL_SUCCESS out.txt; then echo SUCCESS > result_${{ github.event.inputs.uid }}.txt
+        elif grep -q FINAL_PENDING out.txt; then echo PENDING > result_${{ github.event.inputs.uid }}.txt
+        elif grep -q FINAL_FRAUD out.txt; then echo FRAUD > result_${{ github.event.inputs.uid }}.txt
+        else echo FAILED > result_${{ github.event.inputs.uid }}.txt
+        fi
+
+    - name: Push result
+      run: |
+        git config user.name bot
+        git config user.email bot@bot.com
+        git add .
+        git commit -m "result" || true
+        git push
