@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob:; script-src 'self' https://www.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com https://cdnjs.cloudflare.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://openrouter.ai https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com; frame-src https://accounts.google.com;">
+  <title>JavaGoat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=DM+Sans:wght@400;500;700&family=Fira+Code:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <section id="auth-screen" class="auth-screen">
+      <div class="auth-card">
+        <div class="logo">🐐 JavaGoat</div>
+        <h1>Secure AI Workspace</h1>
+        <p>Authenticate with Google for cloud sync, or continue as guest for local-only access.</p>
+        <button id="google-login" class="btn btn-primary">Continue with Google</button>
+        <button id="guest-login" class="btn btn-secondary">Continue as Guest</button>
+      </div>
+    </section>
+
+    <section id="chat-app" class="chat-app hidden">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-top">
+          <div class="logo">🐐 JavaGoat</div>
+          <button id="new-chat" class="btn btn-primary">+ New chat</button>
+          <input id="search-chat" type="search" placeholder="Search chats..." />
+          <div id="history-list" class="history-list"></div>
+        </div>
+        <div class="sidebar-bottom">
+          <button id="open-settings" class="btn btn-secondary">Settings</button>
+          <button id="clear-chats" class="btn btn-danger">Clear all chats</button>
+          <div id="user-profile" class="user-profile"></div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <button id="toggle-sidebar" class="icon-btn">☰</button>
+          <div>
+            <h2 id="chat-title">New Chat</h2>
+            <div class="model-badge"><span class="dot"></span><span id="model-label">openai/gpt-4o-mini</span></div>
+          </div>
+          <div class="topbar-actions">
+            <button id="theme-toggle" class="icon-btn">🌓</button>
+            <button id="logout" class="btn btn-secondary">Logout</button>
+          </div>
+        </header>
+
+        <section id="chat-messages" class="chat-messages">
+          <div id="welcome" class="welcome">
+            <div class="goat">🐐</div>
+            <h1>Hello, how can I help?</h1>
+            <p>Fast, secure chat with cloud-sync settings and image generation.</p>
+            <div class="suggestions">
+              <button class="suggestion" data-text="Explain quantum computing in simple terms.">⚛️ Explain quantum computing</button>
+              <button class="suggestion" data-text="Write a Python function that validates email addresses.">🐍 Write a Python function</button>
+              <button class="suggestion" data-text="Give me 5 creative business ideas for a small town.">💡 5 creative business ideas</button>
+              <button class="suggestion" data-text="Draft a professional follow-up email after an interview.">✉️ Professional email template</button>
+            </div>
+          </div>
+        </section>
+
+        <footer class="input-wrap">
+          <div class="mode-row">
+            <label><input type="radio" name="mode" value="chat" checked /> Chat</label>
+            <label><input type="radio" name="mode" value="image" /> Image</label>
+          </div>
+          <div class="input-row">
+            <textarea id="message-input" rows="1" maxlength="8000" placeholder="Ask anything..."></textarea>
+            <button id="stop-btn" class="btn btn-secondary">Stop</button>
+            <button id="send-btn" class="btn btn-primary">Send</button>
+          </div>
+        </footer>
+      </main>
+    </section>
+
+    <div id="settings-modal" class="modal hidden">
+      <div class="modal-card">
+        <h3>Settings</h3>
+        <div class="settings-grid">
+          <div>
+            <h4>API & Models</h4>
+            <label>OpenRouter API Key
+              <div class="input-icon"><input id="api-key" type="password" /><button data-toggle="api-key">👁</button></div>
+            </label>
+            <label>Model ID
+              <div class="input-icon"><input id="model-id" type="password" /><button data-toggle="model-id">👁</button></div>
+            </label>
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get OpenRouter API key</a>
+            <p id="api-status"></p>
+          </div>
+          <div>
+            <h4>Visuals & System</h4>
+            <label>Image Provider
+              <select id="img-provider">
+                <option value="pollinations">Pollinations (free)</option>
+                <option value="openrouter">OpenRouter</option>
+              </select>
+            </label>
+            <label id="img-model-wrap">Image Model
+              <input id="img-model" type="text" placeholder="stabilityai/stable-diffusion-3-medium" />
+            </label>
+            <div class="theme-buttons">
+              <button data-theme="dark" class="btn btn-secondary">Dark</button>
+              <button data-theme="light" class="btn btn-secondary">Light</button>
+            </div>
+            <label>System Prompt
+              <div class="input-icon"><textarea id="system-prompt" rows="3"></textarea><button data-toggle="system-prompt">👁</button></div>
+            </label>
+            <ul id="security-status" class="security-status"></ul>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="save-settings" class="btn btn-primary">Save settings</button>
+          <button id="close-settings" class="btn btn-secondary">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="image-modal" class="modal hidden"><img id="modal-image" alt="Generated" /></div>
+    <div id="toast-container" class="toast-container"></div>
+  </div>
+</body>
+</html>
